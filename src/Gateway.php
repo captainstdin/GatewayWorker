@@ -1,5 +1,4 @@
 <?php
-
 /**
  * This file is part of workerman.
  *
@@ -48,6 +47,21 @@ class Gateway extends Worker
      * @var string
      */
     public $lanIp = '127.0.0.1';
+
+    /**
+     * 如果宿主机为192.168.1.2 , gatewayworker in  docker container (172.25.0.2)
+     * 此时 lanIp=192.68.1.2 GatewayClientSDK 能连上，但是$this->_innerTcpWorker stream_socket_server(): Unable to connect to tcp://192.168.1.2:2901 (Address not available) in
+     * 此时 lanIp=172.25.0.2 GatewayClientSDK stream_socket_server(): Unable to connect to tcp://172.25.0.2:2901 (Address not available) ， $this->_innerTcpWorker 正常监听
+     *
+     * solution:
+     * $gateway->lanIp=192.168.1.2 ;
+     * $gateway->innerTcpWorkerListen=172.25.0.2; // || 0.0.0.0
+     *
+     * GatewayClientSDK connect  192.168.1.2:lanPort
+     * $this->_innerTcpWorker listen  $gateway->lanIp:lanPort
+     *
+     */
+    public $innerTcpWorkerListen='';
 
     /**
      * 本机端口
@@ -108,7 +122,7 @@ class Gateway extends Worker
     /**
      * 路由函数
      *
-     * @var callable|null
+     * @var callback
      */
     public $router = null;
 
@@ -137,14 +151,14 @@ class Gateway extends Worker
     /**
      * BusinessWorker 连接成功之后触发
      *
-     * @var callable|null
+     * @var callback|null
      */
     public $onBusinessWorkerConnected = null;
 
     /**
      * BusinessWorker 关闭时触发
      *
-     * @var callable|null
+     * @var callback|null
      */
     public $onBusinessWorkerClose = null;
 
@@ -184,35 +198,35 @@ class Gateway extends Worker
     /**
      * 当 worker 启动时
      *
-     * @var callable|null
+     * @var callback
      */
     protected $_onWorkerStart = null;
 
     /**
      * 当有客户端连接时
      *
-     * @var callable|null
+     * @var callback
      */
     protected $_onConnect = null;
 
     /**
      * 当客户端发来消息时
      *
-     * @var callable|null
+     * @var callback
      */
     protected $_onMessage = null;
 
     /**
      * 当客户端连接关闭时
      *
-     * @var callable|null
+     * @var callback
      */
     protected $_onClose = null;
 
     /**
      * 当 worker 停止时
      *
-     * @var callable|null
+     * @var callback
      */
     protected $_onWorkerStop = null;
 
@@ -507,6 +521,12 @@ class Gateway extends Worker
 
          //如为公网IP监听，直接换成0.0.0.0 ，否则用内网IP
         $listen_ip=filter_var($this->lanIp,FILTER_VALIDATE_IP,FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)?'0.0.0.0':$this->lanIp;
+
+        //Use scenario to see line 64
+        if($this->innerTcpWorkerListen!='' ){
+            $listen_ip=$this->innerTcpWorkerListen;
+        }
+
         // 初始化 gateway 内部的监听，用于监听 worker 的连接已经连接上发来的数据
         $this->_innerTcpWorker = new Worker("GatewayProtocol://{$listen_ip}:{$this->lanPort}");
         $this->_innerTcpWorker->reusePort = false;
